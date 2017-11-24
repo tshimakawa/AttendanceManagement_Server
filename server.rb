@@ -315,8 +315,65 @@ def getStudentInfo(uuid)
 	return studentInfo
 end
 
+#出席ポイント取得リクエスト
+def getAttendPoint(uuid)
+    # データベースに接続
+    client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
+    count = 0
+    lectureID = []#学生が受講している全講義のlecture_idを格納する
+    lectureName = []#学生が受講している全講義の講義名を格納する
+    alllectureInfo = []#lectureInfoの全情報を格納する
+    
+    begin
+        # UUIDからstudentIDを取得
+        studentID = String.new
+        results = client.query("SELECT student_id FROM student WHERE uuid='#{uuid}'")
+        if results.size == 1 then
+            results.each do |row|
+                studentID = row['student_id']
+            end
+        else
+            return 1
+        end
+        
+        #学生が受講している講義のlecture_idを取得
+        results = client.query("SELECT lecture_id FROM lecture_student WHERE student_id='#{studentID}'")
+        if results.size != 0 then
+            results.each do |row|
+                result = client.query("SELECT subject FROM lecture WHERE lecture_id='#{row['lecture_id']}'")
+                if result.size == 1 then
+                    result.each do |row|
+                        lectureName << row['subject']
+                    end
+                else
+                    return 2
+                end
+                lectureID << row['lecture_id']
+            end
+        else
+            return 3
+        end
+        
+        #講義ごとの出席回数（出席ポイント）を取得
+        lectureID.each do |lecture_id|
+            lectureInfo = {}#各講義の情報を格納する{lecture_id,講義名,出席回数}
+            results = client.query("SELECT data_id FROM attendance_data WHERE student_id='#{studentID}' AND lecture_id='#{lecture_id}' AND attendance=1")
+            lectureInfo["lecture_id"] = lecture_id
+            lectureInfo["subject"] = lectureName[count]
+            lectureInfo["attend_point"] = results.size
+            alllectureInfo << lectureInfo
+            puts alllectureInfo
+            count += 1
+        end
+    rescue => e
+        return e
+    end
+            
+    return alllectureInfo
+end
+
     #講義履歴取得リクエスト
-def getLectureHistory(uuid)
+def getLectureHistory(uuid,lectureID)
 # データベースに接続
     client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
     count = 0
@@ -336,22 +393,24 @@ def getLectureHistory(uuid)
             return 2
         end
 
-        # studentIDから出席済みの講義情報を取得
         date = String.new
         t = String.new
         starttime = String.new
-        lectureID = String.new
         hash1 = {}
         hash2 = {}
         
-        results = client.query("SELECT DISTINCT date,time,lecture_id FROM attendance_data WHERE student_id = '#{studentID}' AND attendance = 1")
+        puts studentID
+        puts lectureID
+        
+        # studentIDから出席済みの講義情報を取得
+        results = client.query("SELECT DISTINCT date,time FROM attendance_data WHERE lecture_id = '#{lectureID}' AND student_id = '#{studentID}' AND attendance = 1")
+        puts results.size
         if results.size != 0 then
             results.each do |row|
                 date = row['date']
                 t = row['time']
                 starttime = t.strftime "%H:%M:%S"
-                lectureID = row['lecture_id']
-                hash1 = {"Date" => date,"startTime" => starttime,"lectureID" => lectureID}
+                hash1 = {"Date" => date,"startTime" => starttime}
                 hash2[count] = hash1
                 count = count + 1
             end
@@ -363,7 +422,7 @@ def getLectureHistory(uuid)
         # 講義情報の退室時間の取得
         endtime = String.new
         while counter < count do
-            results = client.query("SELECT DISTINCT time FROM attendance_data WHERE student_id = '#{studentID}' AND lecture_id = '#{hash2[counter]["lectureID"].to_i}' AND date = '#{hash2[counter]["Date"].to_date}' AND attendance = 0")
+            results = client.query("SELECT DISTINCT time FROM attendance_data WHERE student_id = '#{studentID}' AND lecture_id = '#{lectureID}' AND date = '#{hash2[counter]["Date"].to_date}' AND attendance = 0")
             if results.size == 1 then
                 results.each do |row|
                     t = row['time']
@@ -383,7 +442,7 @@ def getLectureHistory(uuid)
         subject = String.new
         counter = 0
         while counter < count do
-            results = client.query("SELECT subject FROM lecture WHERE lecture_id = '#{hash2[counter]["lectureID"].to_i}'")
+            results = client.query("SELECT subject FROM lecture WHERE lecture_id = '#{lectureID}'")
                if results.size == 1 then
                    results.each do |row|
                        subject = row['subject']
@@ -659,15 +718,17 @@ when 5 then
     # 講義履歴取得要求処理
     when 6 then
         console.outputInfoOnConsole(uuid,"get lecture history request from #{socket.peeraddr[3]}")
+        
+        lectureID = resultJSON['request']['lecture_id']
         # 講義履歴取得処理
-        result = getLectureHistory(uuid)
+        result = getLectureHistory(uuid,lectureID)
         
         # レスポンス作成
         header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
         # エラーが発生してたら
         if result.kind_of?(Exception) then
             json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-            # 正常登録完了の場合
+        # 正常登録完了の場合
         elsif result.kind_of?(Hash) then
             json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
         else
@@ -741,6 +802,28 @@ when 5 then
         # 正常登録完了の場合
         elsif result == 0 then
             json =  "{\"response\":null,\"header\":{\"status\":\"change success\",\"responseCode\":0}}"
+        else
+            json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+        end
+        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+        puts "    "+json
+        # レスポンス送信
+        socket.puts response
+        
+    # 講義履歴取得要求処理
+    when 10 then
+        console.outputInfoOnConsole(uuid,"get attendPoint request from #{socket.peeraddr[3]}")
+        # 講義履歴取得処理
+        result = getAttendPoint(uuid)
+        
+        # レスポンス作成
+        header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+        # エラーが発生してたら
+        if result.kind_of?(Exception) then
+            json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+            # 正常登録完了の場合
+        elsif result.kind_of?(Array) then
+            json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
         else
             json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
         end
