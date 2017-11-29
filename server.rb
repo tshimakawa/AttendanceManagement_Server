@@ -322,6 +322,7 @@ def getAttendPoint(uuid)
     count = 0
     lectureID = []#学生が受講している全講義のlecture_idを格納する
     lectureName = []#学生が受講している全講義の講義名を格納する
+    profName = []#学生が受講している全講義の担当教員の名前を格納する
     alllectureInfo = []#lectureInfoの全情報を格納する
     
     begin
@@ -333,37 +334,35 @@ def getAttendPoint(uuid)
                 studentID = row['student_id']
             end
         else
-            return 1
+            return 2
         end
         
         #学生が受講している講義のlecture_idを取得
-        results = client.query("SELECT lecture_id FROM lecture_student WHERE student_id='#{studentID}'")
-        if results.size != 0 then
-            results.each do |row|
-                result = client.query("SELECT subject FROM lecture WHERE lecture_id='#{row['lecture_id']}'")
-                if result.size == 1 then
-                    result.each do |row|
-                        lectureName << row['subject']
+        result_lectureID = client.query("SELECT lecture_id FROM lecture_student WHERE student_id='#{studentID}'")
+        if result_lectureID.size != 0 then
+            result_lectureID.each do |row_lectureID|
+                lectureInfo = {}#各講義の情報を格納する{lecture_id,講義名,担当教員}
+                result_sucject = client.query("SELECT subject,prof_id FROM lecture WHERE lecture_id='#{row_lectureID['lecture_id']}'")
+                if result_sucject.size == 1 then
+                    result_sucject.each do |row_subject|
+                        result_profName = client.query("SELECT name FROM prof WHERE prof_id='#{row_subject['prof_id']}'")
+                        if result_profName.size == 1 then
+                            result_profName.each do |row_profName|
+                                lectureInfo["profName"] = row_profName['name']
+                            end
+                        else
+                            return 3
+                        end
+                        lectureInfo['subject'] = row_subject['subject']
                     end
                 else
-                    return 2
+                    return 4
                 end
-                lectureID << row['lecture_id']
+                lectureInfo['lectureID'] = row_lectureID['lecture_id']
+                alllectureInfo << lectureInfo
             end
         else
-            return 3
-        end
-        
-        #講義ごとの出席回数（出席ポイント）を取得
-        lectureID.each do |lecture_id|
-            lectureInfo = {}#各講義の情報を格納する{lecture_id,講義名,出席回数}
-            results = client.query("SELECT data_id FROM attendance_data WHERE student_id='#{studentID}' AND lecture_id='#{lecture_id}' AND attendance=1")
-            lectureInfo["lecture_id"] = lecture_id
-            lectureInfo["subject"] = lectureName[count]
-            lectureInfo["attend_point"] = results.size
-            alllectureInfo << lectureInfo
-            puts alllectureInfo
-            count += 1
+            return 5
         end
     rescue => e
         return e
@@ -396,70 +395,95 @@ def getLectureHistory(uuid,lectureID)
         date = String.new
         t = String.new
         starttime = String.new
-        hash1 = {}
-        hash2 = {}
+        lectureHistory = []#該当講義の全履歴を格納する配列
         
-        puts studentID
-        puts lectureID
-        
-        # studentIDから出席済みの講義情報を取得
-        results = client.query("SELECT DISTINCT date,time FROM attendance_data WHERE lecture_id = '#{lectureID}' AND student_id = '#{studentID}' AND attendance = 1")
-        puts results.size
-        if results.size != 0 then
-            results.each do |row|
-                date = row['date']
-                t = row['time']
-                starttime = t.strftime "%H:%M:%S"
-                hash1 = {"Date" => date,"startTime" => starttime}
-                hash2[count] = hash1
-                count = count + 1
-            end
-            hash2[0]["count"] = results.size
-        else
-            return 3
-        end
-        
-        # 講義情報の退室時間の取得
-        endtime = String.new
-        while counter < count do
-            results = client.query("SELECT DISTINCT time FROM attendance_data WHERE student_id = '#{studentID}' AND lecture_id = '#{lectureID}' AND date = '#{hash2[counter]["Date"].to_date}' AND attendance = 0")
-            if results.size == 1 then
-                results.each do |row|
-                    t = row['time']
-                    endtime = t.strftime "%H:%M:%S"
-                    hash2[counter]["endTime"] = endtime
+        #lectureIDから該当講義の講義美を取得
+        result_date = client.query("SELECT DISTINCT date FROM attendance_data WHERE lecture_id = '#{lectureID}'")
+        if result_date.size != 0 then
+            result_date.each do |row_date|
+                lectureDateHistory = {}#該当講義の日毎の履歴情報を格納する連想配列
+                lectureDateHistory['date'] = row_date['date']
+                time = []#該当日の出席・退室時間を格納する配列
+                result_time = client.query("SELECT time FROM attendance_data where student_id = '#{studentID}' AND date = '#{row_date['date'].to_date}'")
+                if result_time.size == 0 then
+                    lectureDateHistory['time'] = []
+                elsif result_time.size > 0 && result_time.size < 3 then
+                    result_time.each do |row_time|
+                        time << (row_time['time'].strftime"%H:%M:%S")
+                    end
+                    lectureDateHistory['time'] = time
+                else
+                    return 3
                 end
-            elsif results.size == 0 then
-                hash2[counter]["endTime"] = "0"
-            else
-                return 4
+                lectureHistory << lectureDateHistory
             end
-            counter = counter + 1
-        end
-
-
-        # lectureIDから講義名を取得
-        subject = String.new
-        counter = 0
-        while counter < count do
-            results = client.query("SELECT subject FROM lecture WHERE lecture_id = '#{lectureID}'")
-               if results.size == 1 then
-                   results.each do |row|
-                       subject = row['subject']
-                       hash2[counter]["subject"] = subject
-                   end
-               else
-                   return 5
-               end
-            counter = counter + 1
+        else
+            return 4
         end
     rescue => e
         return e
     end
-
-    return hash2
-
+    
+    return lectureHistory
 end
+#        # studentIDから出席済みの講義情報を取得
+#        results = client.query("SELECT DISTINCT date,time FROM attendance_data WHERE lecture_id = '#{lectureID}' AND student_id = '#{studentID}' AND attendance = 1")
+#        puts results.size
+#        if results.size != 0 then
+#            results.each do |row|
+#                date = row['date']
+#                t = row['time']
+#                starttime = t.strftime "%H:%M:%S"
+#                hash1 = {"Date" => date,"startTime" => starttime}
+#                hash2[count] = hash1
+#                count = count + 1
+#            end
+#            hash2[0]["count"] = results.size
+#        else
+#            return 3
+#        end
+#
+#        # 講義情報の退室時間の取得
+#        endtime = String.new
+#        while counter < count do
+#            results = client.query("SELECT DISTINCT time FROM attendance_data WHERE student_id = '#{studentID}' AND lecture_id = '#{lectureID}' AND date = '#{hash2[counter]["Date"].to_date}' AND attendance = 0")
+#            if results.size == 1 then
+#                results.each do |row|
+#                    t = row['time']
+#                    endtime = t.strftime "%H:%M:%S"
+#                    hash2[counter]["endTime"] = endtime
+#                end
+#            elsif results.size == 0 then
+#                hash2[counter]["endTime"] = "0"
+#            else
+#                return 4
+#            end
+#            counter = counter + 1
+#        end
+#
+#
+#        # lectureIDから講義名を取得
+#        subject = String.new
+#        counter = 0
+#        while counter < count do
+#            results = client.query("SELECT subject FROM lecture WHERE lecture_id = '#{lectureID}'")
+#               if results.size == 1 then
+#                   results.each do |row|
+#                       subject = row['subject']
+#                       hash2[counter]["subject"] = subject
+#                   end
+#               else
+#                   return 5
+#               end
+#            counter = counter + 1
+#        end
+#    rescue => e
+#        return e
+#    end
+#
+#    return hash2
+#
+#end
 
 #教室情報取得リクエスト
 def getClassroom(uuid,major)
@@ -729,7 +753,7 @@ when 5 then
         if result.kind_of?(Exception) then
             json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
         # 正常登録完了の場合
-        elsif result.kind_of?(Hash) then
+        elsif result.kind_of?(Array) then
             json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
         else
             json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
