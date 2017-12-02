@@ -42,83 +42,48 @@ def checkRegistered(uuid)
 	return 0
 end
 
-# 学生登録処理
-def registerStudent(uuid,studentID,name)
-	# データベースに接続
-	client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
-	# DB
-	studentName = ""
-	if checkRegistered(uuid) != 0 then
-		begin
-		results =  client.query("SELECT name FROM student WHERE student_id = '#{studentID}'")
-			if results.size == 1 then
-				results.each do |row|
-					studentName = row['name']
-				end
-				studentInfo = {"studentName" => studentName}
-				return studentInfo
-			elsif results.size == 0 then
-				begin
-					client.query("INSERT INTO student(student_id,name,uuid) VALUES ('#{studentID}','#{name}','#{uuid}')")
-				rescue => e
-					return e
-				end
-			return 0
-			else
-				return 1
-			end
-		rescue => e
-			return e
-		end
-	else
-		return 1
-	end
-end
-
-
 # 出席データ登録
 def writeAttendance(uuid,room,attendance)
-	# データベースに接続
-	client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
-	# DB
-	begin
-		#client.query("BEGIN")
-		# UUIDからstudentIDを取得
-		results = client.query("SELECT student_id FROM student WHERE uuid='#{uuid}'")
-		studentID = String.new
-		if results.size == 1 then
-			results.each do |row|
-				studentID = row["student_id"]
-			end
-		else
-			return 2
-		end
-	rescue => e
-		return e	
-	end
-
-
+    # データベースに接続
+    client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
+    # DB
+    begin
+        #client.query("BEGIN")
+        # UUIDからstudentIDを取得
+        results = client.query("SELECT student_id FROM student WHERE uuid='#{uuid}'")
+        studentID = String.new
+        if results.size == 1 then
+            results.each do |row|
+                studentID = row["student_id"]
+            end
+        else
+            return 2
+        end
+    rescue => e
+        return e
+    end
+    
     # 時間割から今何講時目かを計算(Answer講時、-1は時間外）
-    # 現在の日付取得	
-	nowtime = Time.now
-	times = Array.new
-	year = (Date.today << 3).year
-	wday = nowtime.wday
-
+    # 現在の日付取得
+    nowtime = Time.now
+    times = Array.new
+    year = (Date.today << 3).year
+    wday = nowtime.wday
+    
     # 春秋判別
-	if nowtime.month >= 4 and nowtime.month < 10 then
-		term = "Spring"
-	else
-		term = "Autumn"
-	end
-	
-	#date,time取得
-	date = nowtime.strftime("%Y-%m-%d")
-	time = nowtime.strftime("%H:%M:%S")
-	# lectureID取得
-	lectureID = -1
-	# year,room,weekday,termの一致するカラムを取得
-	nowtime2 = Time.mktime(2000,1,1,nowtime.hour,nowtime.min,nowtime.sec)
+    if nowtime.month >= 4 and nowtime.month < 10 then
+        term = "Spring"
+        else
+        term = "Autumn"
+    end
+    
+    #date,time取得
+    date = nowtime.strftime("%Y-%m-%d")
+    time = nowtime.strftime("%H:%M:%S")
+    # lectureID取得
+    lectureID = -1
+    # year,room,weekday,termの一致するカラムを取得
+    nowtime2 = Time.mktime(2000,1,1,nowtime.hour,nowtime.min,nowtime.sec)
     
     if attendance == 1
         begin
@@ -131,10 +96,10 @@ def writeAttendance(uuid,room,attendance)
                     lectureID = row['lecture_id']
                 end
             end
-        rescue => e
+            rescue => e
             return e
         end
-    else
+        else
         begin
             results = client.query("SELECT lecture_id,start_time,end_time FROM lecture WHERE year='#{year}' AND room='#{room}' AND weekday=#{wday} AND term='#{term}'")
             results.each do |row|
@@ -145,15 +110,15 @@ def writeAttendance(uuid,room,attendance)
                     lectureID = row['lecture_id']
                 end
             end
-        rescue => e
+            rescue => e
             return e
         end
     end
-
-	if lectureID == -1 then
-		return 5
-	end
-	
+    
+    if lectureID == -1 then
+        return 5
+    end
+    
     #受講者リストに登録されているかの確認
     begin
         results = client.query("SELECT * FROM lecture_student WHERE lecture_id='#{lectureID}' AND student_id='#{studentID}'")
@@ -161,16 +126,45 @@ def writeAttendance(uuid,room,attendance)
             # 出席データ書き込み
             begin
                 client.query("INSERT INTO attendance_data(date,time,student_id,lecture_id,minor,attendance) VALUES('#{date}','#{time}','#{studentID}','#{lectureID}','0',#{attendance})")
-            rescue => e
+                rescue => e
                 return e
             end
-        else
+            else
             return 6
         end
-    rescue => e
-        return e	
+        rescue => e
+        return e
     end
-	return 0
+    return 0
+end
+
+
+# 学生登録処理
+def registerStudent(uuid,studentID,name)
+	# データベースに接続
+	client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
+	# DB
+	studentName = ""
+	if checkRegistered(uuid) != 0 then
+		begin
+            results =  client.query("SELECT name FROM student WHERE student_id = '#{studentID}'") #学籍番号の重複の確認
+            if results.size == 1 then #入力された学籍番号がすでに登録されている場合
+				results.each do |row|
+					studentName = row['name']
+				end
+				studentInfo = {"studentName" => studentName}
+				return studentInfo
+            elsif results.size == 0 then #入力された学籍番号が登録されていない場合
+                client.query("INSERT INTO student(student_id,name,uuid) VALUES ('#{studentID}','#{name}','#{uuid}')")
+			else
+				return 1
+			end
+		rescue => e
+			return e
+		end
+	else
+		return 1
+	end
 end
 
 #講義情報取得リクエスト
@@ -426,64 +420,6 @@ def getLectureHistory(uuid,lectureID)
     
     return lectureHistory
 end
-#        # studentIDから出席済みの講義情報を取得
-#        results = client.query("SELECT DISTINCT date,time FROM attendance_data WHERE lecture_id = '#{lectureID}' AND student_id = '#{studentID}' AND attendance = 1")
-#        puts results.size
-#        if results.size != 0 then
-#            results.each do |row|
-#                date = row['date']
-#                t = row['time']
-#                starttime = t.strftime "%H:%M:%S"
-#                hash1 = {"Date" => date,"startTime" => starttime}
-#                hash2[count] = hash1
-#                count = count + 1
-#            end
-#            hash2[0]["count"] = results.size
-#        else
-#            return 3
-#        end
-#
-#        # 講義情報の退室時間の取得
-#        endtime = String.new
-#        while counter < count do
-#            results = client.query("SELECT DISTINCT time FROM attendance_data WHERE student_id = '#{studentID}' AND lecture_id = '#{lectureID}' AND date = '#{hash2[counter]["Date"].to_date}' AND attendance = 0")
-#            if results.size == 1 then
-#                results.each do |row|
-#                    t = row['time']
-#                    endtime = t.strftime "%H:%M:%S"
-#                    hash2[counter]["endTime"] = endtime
-#                end
-#            elsif results.size == 0 then
-#                hash2[counter]["endTime"] = "0"
-#            else
-#                return 4
-#            end
-#            counter = counter + 1
-#        end
-#
-#
-#        # lectureIDから講義名を取得
-#        subject = String.new
-#        counter = 0
-#        while counter < count do
-#            results = client.query("SELECT subject FROM lecture WHERE lecture_id = '#{lectureID}'")
-#               if results.size == 1 then
-#                   results.each do |row|
-#                       subject = row['subject']
-#                       hash2[counter]["subject"] = subject
-#                   end
-#               else
-#                   return 5
-#               end
-#            counter = counter + 1
-#        end
-#    rescue => e
-#        return e
-#    end
-#
-#    return hash2
-#
-#end
 
 #教室情報取得リクエスト
 def getClassroom(uuid,major)
@@ -547,317 +483,285 @@ console = Console.new
 
 # ソケット通信
 threads = []
-
 loop do
-  #socket = server.accept
-	Thread.start(server.accept) do |socket|
-	length = 0
-	count += 1
-	request = socket.gets
-	if request.include? "GET" then
-		console.outputInfoOnConsole("unknown","Invalid request by #{socket.peeraddr[3]}")
-                socket.close
-		break
-	end
-	#begin	
-	#timeout(5){
-  # HTTPメッセージを1行ずつ読み出す
-  while buffer = socket.gets
-    #puts buffer
-
-    # Content-Lengthの値をlengthに格納
-    if buffer.include? "Content-Length"
-      length = buffer.split[1].to_i
-    end
-
-    # 改行のみ→次の行以降はBody
-    if buffer == "\r\n"
-      # BodyからContent-Length文字読み出す
-      #length.times do
-      #  putc socket.getc
-			#end
-			str = ""
-			length.times{
-				str << socket.getc
-			}
-      break
-    end
-
-  end
-
- # puts "\n\n"
-
-	resultJSON = JSON.parse(str)
-
-	#puts resultJSON
-
-	uuid = resultJSON['header']['uuid']
-	requestCode = resultJSON['request']['requestCode'].to_i
-	
-	case requestCode
-	# 学生情報登録確認
-	when 0 then
-		console.outputInfoOnConsole(uuid,"registered check request from #{socket.peeraddr[3]}") 
-		# 学生情報登録確認処理
-		registeredFlag = checkRegistered(uuid)
-		
-		# レスポンス作成
-		header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-		if registeredFlag == 0 then	# 登録済み
-			json =  "{\"response\":null,\"header\":{\"status\":\"already registered\",\"responseCode\":0}}"
-		else	# 未登録
-			json =  "{\"response\":null,\"header\":{\"status\":\"unregistered\",\"responseCode\":1}}"
-		end
-		response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-		puts "	"+json
-        # レスポンス送信
-		socket.puts response
-
-	# 学生情報登録処理
-	when 3 then
-		console.outputInfoOnConsole(uuid,"registration request from #{socket.peeraddr[3]}") 
-		
-		# 学生情報登録処理
-		studentID = resultJSON['request']['studentID']
-		name = resultJSON['request']['name']
-		result = registerStudent(uuid,studentID,name)
-		#p result	
-		# レスポンス作成
-		header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-		# エラーが発生してたら
-		if result.kind_of?(Exception) then
-			json =  "{\"response\":#{result.message},\"header\":{\"status\":\"error\",\"responseCode\":1}}"
-		# 正常登録完了の場合
-		elsif result == 0 then
-			json =  "{\"response\":null,\"header\":{\"status\":\"resistration success\",\"responseCode\":0}}"
-		elsif result == 1 then
-			json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":1}}"
-		else
-			json =  "{\"response\":{\"studentName\":\"#{result['studentName']}\"},\"header\":{\"status\":\"error\",\"responseCode\":2}}"
+    #socket = server.accept
+    Thread.start(server.accept) do |socket|
+        length = 0
+        count += 1
+        request = socket.gets
+        if request.include? "GET" then
+            console.outputInfoOnConsole("unknown","Invalid request by #{socket.peeraddr[3]}")
+            socket.close
+            break
         end
-        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-		puts "	"+json
-        # レスポンス送信
-		socket.puts response
-
-	# 出席データ登録
-	when 1 then
-		console.outputInfoOnConsole(uuid,"attend request from #{socket.peeraddr[3]}") 
-		# 出席データ登録処理
-		room = resultJSON['request']['room']
-		result = writeAttendance(uuid,room,1)
-
-		# レスポンス作成
-		header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-		# エラーが発生してたら
-		if result.kind_of?(Exception) then
-				json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-		elsif result == 0 then
-			json =  "{\"response\":null,\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-		# 正常登録完了の場合
-		else
-			json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
-        end
-		response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-		puts "	"+json
-        # レスポンス送信
-		socket.puts response
-
-    # 講義情報取得要求処理
-    when 4 then
-        console.outputInfoOnConsole(uuid,"get lecture info request from #{socket.peeraddr[3]}")
-        # 出席データ登録処理
-        room = resultJSON['request']['room']
-        result = getLectureInfo(uuid,room)
-        
-        # レスポンス作成
-        header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-        # エラーが発生してたら
-        if result.kind_of?(Exception) then
-            json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":7}}"
-        # 正常登録完了の場合
-        elsif result.kind_of?(Hash) then
-            if result['attendMode'].to_i == -1 then#未出席の場合
-                json =  "{\"response\":{\"subject\":\"#{result['subject']}\",\"profName\":\"#{result['profName']}\",\"timeID\":#{result['timeID'].to_i}},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-            elsif result['attendMode'].to_i == 1 then#出席済みの場合
-                json =  "{\"response\":{\"subject\":\"#{result['subject']}\",\"profName\":\"#{result['profName']}\",\"timeID\":#{result['timeID'].to_i}},\"header\":{\"status\":\"success\",\"responseCode\":1}}"
-            else#退室済みの場合
-                json =  "{\"response\":{\"subject\":\"#{result['subject']}\",\"profName\":\"#{result['profName']}\",\"timeID\":#{result['timeID'].to_i}},\"header\":{\"status\":\"success\",\"responseCode\":2}}"
+        # HTTPメッセージを1行ずつ読み出す
+        while buffer = socket.gets
+            # Content-Lengthの値をlengthに格納
+            if buffer.include? "Content-Length"
+                length = buffer.split[1].to_i
             end
-        # エラーが発生している場合
-        else
-            json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+          
+            # 改行のみ→次の行以降はBody
+            if buffer == "\r\n"
+                # BodyからContent-Length文字読み出す
+                #length.times do
+                #  putc socket.getc
+                #end
+                str = ""
+                length.times{
+                    str << socket.getc
+                    
+                }
+                break
+            end
         end
-        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-        puts "	"+json
-        # レスポンス送信
-        socket.puts response
+        
+        resultJSON = JSON.parse(str)
+        #puts resultJSON
+      
+        uuid = resultJSON['header']['uuid']
+        requestCode = resultJSON['request']['requestCode'].to_i
+      
+        case requestCode
+            # 学生情報登録確認
+            when 0 then
+                console.outputInfoOnConsole(uuid,"registered check request from #{socket.peeraddr[3]}")
+                # 学生情報登録確認処理
+                result = checkRegistered(uuid)
+		
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result == 0 then	# 登録済み
+                    json =  "{\"response\":null,\"header\":{\"status\":\"already registered\",\"responseCode\":0}}"
+                else	# 未登録
+                    json =  "{\"response\":null,\"header\":{\"status\":\"unregistered\",\"responseCode\":1}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "	"+json
+                # レスポンス送信
+                socket.puts response
+        
+            # 出席データ登録
+            when 1 then
+                console.outputInfoOnConsole(uuid,"attend request from #{socket.peeraddr[3]}")
+                # 出席データ登録処理
+                room = resultJSON['request']['room']
+                result = writeAttendance(uuid,room,1)
+        
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then # データベース検索でエラーが発生してたら
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result == 0 then # 正常に動作した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                else #予期しない動作をしていた場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "    "+json
+                # レスポンス送信
+                socket.puts response
+        
+            #退室データ登録
+            when 2 then
+                console.outputInfoOnConsole(uuid,"leave request from #{socket.peeraddr[3]}")
+                #出席データ登録処理
+                room = resultJSON['request']['room']
+                result = writeAttendance(uuid,room,0)
+        
+                #レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result == 0 then #正常に動作した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "    "+json
+                # レスポンス送信
+                socket.puts response
 
-# 学生情報取得要求処理
-when 5 then
-		console.outputInfoOnConsole(uuid,"get student info request from #{socket.peeraddr[3]}") 
-		# 学生情報取得処理
-		result = getStudentInfo(uuid)
+	        # 学生情報登録処理
+            when 3 then
+                console.outputInfoOnConsole(uuid,"registration request from #{socket.peeraddr[3]}")
+                # 学生情報登録処理
+                studentID = resultJSON['request']['studentID']
+                name = resultJSON['request']['name']
+                result = registerStudent(uuid,studentID,name)
+                
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"error\",\"responseCode\":1}}"
+                elsif result == 0 then #正常に動作した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"resistration success\",\"responseCode\":0}}"
+                elsif result == 1 then #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":1}}"
+                else #入力された学籍番号がすでに登録されていた場合
+                    json =  "{\"response\":{\"studentName\":\"#{result['studentName']}\"},\"header\":{\"status\":\"error\",\"responseCode\":2}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "	"+json
+                # レスポンス送信
+                socket.puts response
 
-		# レスポンス作成
-		header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-		# エラーが発生してたら
-		if result.kind_of?(Exception) then
-				json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-		# 正常登録完了の場合
-		elsif result.kind_of?(Hash) then
-			json =  "{\"response\":{\"studentID\":\"#{result['studentID']}\",\"studentName\":\"#{result['studentName']}\"},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-		else
-			json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
-		end
-		response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-		puts "	"+json
-        # レスポンス送信
-		socket.puts response
+            # 講義情報取得要求処理
+            when 4 then
+                console.outputInfoOnConsole(uuid,"get lecture info request from #{socket.peeraddr[3]}")
+                # 出席データ登録処理
+                room = resultJSON['request']['room']
+                result = getLectureInfo(uuid,room)
         
-        
-	# 退室データ登録
-	when 2 then
-		console.outputInfoOnConsole(uuid,"leave request from #{socket.peeraddr[3]}") 
-		# 出席データ登録処理
-		room = resultJSON['request']['room']
-		result = writeAttendance(uuid,room,0)
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":7}}"
+                elsif result.kind_of?(Hash) then #正常に講義情報を取得できた場合
+                    if result['attendMode'].to_i == -1 then#未出席の場合
+                        json =  "{\"response\":{\"subject\":\"#{result['subject']}\",\"profName\":\"#{result['profName']}\",\"timeID\":#{result['timeID'].to_i}},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                    elsif result['attendMode'].to_i == 1 then#出席済みの場合
+                        json =  "{\"response\":{\"subject\":\"#{result['subject']}\",\"profName\":\"#{result['profName']}\",\"timeID\":#{result['timeID'].to_i}},\"header\":{\"status\":\"success\",\"responseCode\":1}}"
+                    else#退室済みの場合
+                        json =  "{\"response\":{\"subject\":\"#{result['subject']}\",\"profName\":\"#{result['profName']}\",\"timeID\":#{result['timeID'].to_i}},\"header\":{\"status\":\"success\",\"responseCode\":2}}"
+                    end
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "	"+json
+                # レスポンス送信
+                socket.puts response
 
-		# レスポンス作成
-		header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-		# エラーが発生してたら
-		if result.kind_of?(Exception) then
-				json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-		elsif result == 0 then
-			json =  "{\"response\":null,\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-		# 正常登録完了の場合
-		else
-			json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
-		end
-		response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-		puts "	"+json
-        # レスポンス送信
-		socket.puts response
+            # 学生情報取得要求処理
+            when 5 then
+                console.outputInfoOnConsole(uuid,"get student info request from #{socket.peeraddr[3]}")
+                # 学生情報取得処理
+                result = getStudentInfo(uuid)
+
+		        # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result.kind_of?(Hash) then #正常に学生情報を取得した場合
+                    json =  "{\"response\":{\"studentID\":\"#{result['studentID']}\",\"studentName\":\"#{result['studentName']}\"},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "	"+json
+                # レスポンス送信
+                socket.puts response
         
-    # 講義履歴取得要求処理
-    when 6 then
-        console.outputInfoOnConsole(uuid,"get lecture history request from #{socket.peeraddr[3]}")
+            # 講義履歴取得要求処理
+            when 6 then
+                console.outputInfoOnConsole(uuid,"get lecture history request from #{socket.peeraddr[3]}")
         
-        lectureID = resultJSON['request']['lecture_id']
-        # 講義履歴取得処理
-        result = getLectureHistory(uuid,lectureID)
+                lectureID = resultJSON['request']['lecture_id']
+                # 講義履歴取得処理
+                result = getLectureHistory(uuid,lectureID)
         
-        # レスポンス作成
-        header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-        # エラーが発生してたら
-        if result.kind_of?(Exception) then
-            json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-        # 正常登録完了の場合
-        elsif result.kind_of?(Array) then
-            json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-        else
-            json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result.kind_of?(Array) then #正常に講義履歴情報が取得した場合
+                    json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "	"+json
+                # レスポンス送信
+                socket.puts response
+        
+            # 教室情報取得要求処理
+            when 7 then
+                console.outputInfoOnConsole(uuid,"get room Info request from #{socket.peeraddr[3]}")
+                # 講義履歴取得処理
+                major = resultJSON['request']['major']
+                result = getClassroom(uuid,major)
+        
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result.kind_of?(Hash) then #正常に教室情報を取得した場合
+                    json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "	"+json
+                # レスポンス送信
+                socket.puts response
+        
+            #attendTime取得リクエスト
+            when 8 then
+                console.outputInfoOnConsole(uuid,"get attendTime request from #{socket.peeraddr[3]}")
+                #attendTime取得処理
+                result = getAttendTime(uuid)
+                
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result['success'].to_i == 0 then #正常に出席開始時間を取得した場合
+                    json =  "{\"response\":{\"attend_start\":\"#{result['attend_start']}\",\"attend_end\":\"#{result['attend_end']}\"},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "    "+json
+                # レスポンス送信
+                socket.puts response
+        
+            #attendTime変更リクエスト
+            when 9 then
+                #コンソールにログ出力
+                console.outputInfoOnConsole(uuid,"get attendTime request from #{socket.peeraddr[3]}")
+                #attendTime取得処理
+                attend_start = resultJSON['request']['attend_start']
+                attend_end = resultJSON['request']['attend_end']
+                puts "'#{attend_start}','#{attend_end}'"
+                result = changeAttendTime(uuid,attend_start,attend_end)
+                puts "#{result}"
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result == 0 then #正常に出席開始時間を変更した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"change success\",\"responseCode\":0}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "    "+json
+                # レスポンス送信
+                socket.puts response
+        
+            # 受講講義情報取得要求処理
+            when 10 then
+                console.outputInfoOnConsole(uuid,"get attendPoint request from #{socket.peeraddr[3]}")
+                # 受講講義情報取得処理
+                result = getAttendPoint(uuid)
+        
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
+                elsif result.kind_of?(Array) then #正常に受講講義情報を取得した場合
+                    json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "    "+json
+                # レスポンス送信
+                socket.puts response
         end
-        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-        puts "	"+json
-        # レスポンス送信
-        socket.puts response
-        
-        # 教室情報取得要求処理
-    when 7 then
-        console.outputInfoOnConsole(uuid,"get room Info request from #{socket.peeraddr[3]}")
-        # 講義履歴取得処理
-        major = resultJSON['request']['major']
-        result = getClassroom(uuid,major)
-        
-        # レスポンス作成
-        header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-        # エラーが発生してたら
-        if result.kind_of?(Exception) then
-            json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-            # 正常登録完了の場合
-            elsif result.kind_of?(Hash) then
-            json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-            else
-            json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
-        end
-        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-        puts "	"+json
-        # レスポンス送信
-        socket.puts response
-        
-    #attendTime取得リクエスト
-    when 8 then
-        #コンソールにログ出力
-        console.outputInfoOnConsole(uuid,"get attendTime request from #{socket.peeraddr[3]}")
-        #attendTime取得処理
-        result = getAttendTime(uuid)
-        # レスポンス作成
-        header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-        # エラーが発生してたら
-        if result.kind_of?(Exception) then
-            json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-        elsif result['success'].to_i == 0 then
-        json =  "{\"response\":{\"attend_start\":\"#{result['attend_start']}\",\"attend_end\":\"#{result['attend_end']}\"},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-            # 正常登録完了の場合
-        else
-            json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
-        end
-        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-        puts "    "+json
-        # レスポンス送信
-        socket.puts response
-        
-    #attendTime変更リクエスト
-    when 9 then
-        #コンソールにログ出力
-        console.outputInfoOnConsole(uuid,"get attendTime request from #{socket.peeraddr[3]}")
-        #attendTime取得処理
-        attend_start = resultJSON['request']['attend_start']
-        attend_end = resultJSON['request']['attend_end']
-        puts "'#{attend_start}','#{attend_end}'"
-        result = changeAttendTime(uuid,attend_start,attend_end)
-        puts "#{result}"
-        # レスポンス作成
-        header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-        # エラーが発生してたら
-        if result.kind_of?(Exception) then
-            json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-        # 正常登録完了の場合
-        elsif result == 0 then
-            json =  "{\"response\":null,\"header\":{\"status\":\"change success\",\"responseCode\":0}}"
-        else
-            json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
-        end
-        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-        puts "    "+json
-        # レスポンス送信
-        socket.puts response
-        
-    # 講義履歴取得要求処理
-    when 10 then
-        console.outputInfoOnConsole(uuid,"get attendPoint request from #{socket.peeraddr[3]}")
-        # 講義履歴取得処理
-        result = getAttendPoint(uuid)
-        
-        # レスポンス作成
-        header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
-        # エラーが発生してたら
-        if result.kind_of?(Exception) then
-            json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-            # 正常登録完了の場合
-        elsif result.kind_of?(Array) then
-            json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
-        else
-            json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
-        end
-        response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
-        puts "    "+json
-        # レスポンス送信
-        socket.puts response
-        
-	end
-	socket.close
-	end
+        socket.close
+    end
 end
 server.close
