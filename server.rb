@@ -156,6 +156,7 @@ def registerStudent(uuid,studentID,name)
 				return studentInfo
             elsif results.size == 0 then #入力された学籍番号が登録されていない場合
                 client.query("INSERT INTO student(student_id,name,uuid) VALUES ('#{studentID}','#{name}','#{uuid}')")
+                return 0
 			else
 				return 1
 			end
@@ -595,7 +596,7 @@ loop do
                 header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
                 if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
                     json =  "{\"response\":#{result.message},\"header\":{\"status\":\"error\",\"responseCode\":1}}"
-                elsif result == 0 then #正常に動作した場合
+                elsif result == 0 then #正常に学生情報を登録した場合
                     json =  "{\"response\":null,\"header\":{\"status\":\"resistration success\",\"responseCode\":0}}"
                 elsif result == 1 then #データベース検索以外でエラーが発生した場合
                     json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":1}}"
