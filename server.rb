@@ -25,14 +25,25 @@ class Console
 end
 
 # 学生登録確認
-def checkRegistered(uuid)
+def checkRegistered(uuid,os,appVersion,buildVersion)
 	# データベースに接続
 	client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
 	# DB
 	#client.query("BEGIN")
+    appversion = String.new
+    buildversion = String.new
 	begin
-		results = client.query("SELECT name FROM student WHERE uuid='#{uuid}'")
+        #各osの最新アプリケーション番号の取得
+        result = client.query("SELECT appVersion,buildVersion FROM application WHERE os='#{os}'")
+        result.each do |row|
+            appversion = row["appVersion"]
+            buildversion = row["buildVersion"]
+        end
+        if buildVersion != buildversion then#最新アプリケーション番号でない場合
+            return 2
+        end
         
+		results = client.query("SELECT name FROM student WHERE uuid='#{uuid}'")
 	rescue => e
 		return e
 	end
@@ -85,7 +96,7 @@ def writeAttendance(uuid,room,attendance)
     # year,room,weekday,termの一致するカラムを取得
     nowtime2 = Time.mktime(2000,1,1,nowtime.hour,nowtime.min,nowtime.sec)
     
-    if attendance == 1
+    if attendance == 1 then
         begin
             results = client.query("SELECT lecture_id,attend_start,attend_end FROM lecture WHERE year='#{year}' AND room='#{room}' AND weekday=#{wday} AND term='#{term}'")
             results.each do |row|
@@ -96,10 +107,10 @@ def writeAttendance(uuid,room,attendance)
                     lectureID = row['lecture_id']
                 end
             end
-            rescue => e
+        rescue => e
             return e
         end
-        else
+    else
         begin
             results = client.query("SELECT lecture_id,start_time,end_time FROM lecture WHERE year='#{year}' AND room='#{room}' AND weekday=#{wday} AND term='#{term}'")
             results.each do |row|
@@ -110,7 +121,7 @@ def writeAttendance(uuid,room,attendance)
                     lectureID = row['lecture_id']
                 end
             end
-            rescue => e
+        rescue => e
             return e
         end
     end
@@ -126,13 +137,21 @@ def writeAttendance(uuid,room,attendance)
             # 出席データ書き込み
             begin
                 client.query("INSERT INTO attendance_data(date,time,student_id,lecture_id,minor,attendance) VALUES('#{date}','#{time}','#{studentID}','#{lectureID}','0',#{attendance})")
-                rescue => e
+                if attendance == 1 then
+                    #lectureIDから該当講義の講義日を取得
+                    lectureDate = client.query("SELECT DISTINCT date FROM attendance_data WHERE lecture_id = '#{lectureID}'")
+                    #lectureIDと学籍番号から学生の出席日を取得
+                    attendDate = client.query("SELECT DISTINCT date FROM attendance_data WHERE lecture_id = '#{lectureID}' AND student_id='#{studentID}'")
+                    attendInfo = {"lectureDate" => lectureDate.size,  "attendDate" => attendDate.size}#講義日数と出席日数を格納
+                    return attendInfo
+                end
+            rescue => e
                 return e
             end
-            else
+        else
             return 6
         end
-        rescue => e
+    rescue => e
         return e
     end
     return 0
@@ -145,27 +164,23 @@ def registerStudent(uuid,studentID,name)
 	client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
 	# DB
 	studentName = ""
-	if checkRegistered(uuid) != 0 then
-		begin
-            results =  client.query("SELECT name FROM student WHERE student_id = '#{studentID}'") #学籍番号の重複の確認
-            if results.size == 1 then #入力された学籍番号がすでに登録されている場合
-				results.each do |row|
-					studentName = row['name']
-				end
-				studentInfo = {"studentName" => studentName}
-				return studentInfo
-            elsif results.size == 0 then #入力された学籍番号が登録されていない場合
-                client.query("INSERT INTO student(student_id,name,uuid) VALUES ('#{studentID}','#{name}','#{uuid}')")
-                return 0
-			else
-				return 1
-			end
-		rescue => e
-			return e
-		end
-	else
-		return 1
-	end
+    begin
+        results =  client.query("SELECT name FROM student WHERE student_id = '#{studentID}'") #学籍番号の重複の確認
+        if results.size == 1 then #入力された学籍番号がすでに登録されている場合
+            results.each do |row|
+                studentName = row['name']
+            end
+            studentInfo = {"studentName" => studentName}
+            return studentInfo
+        elsif results.size == 0 then #入力された学籍番号が登録されていない場合
+            client.query("INSERT INTO student(student_id,name,uuid) VALUES ('#{studentID}','#{name}','#{uuid}')")
+            return 0
+        else
+            return 1
+        end
+    rescue => e
+        return e
+    end
 end
 
 #講義情報取得リクエスト
@@ -195,7 +210,6 @@ def getLectureInfo(uuid,room)
 	times = Array.new
 	year = (Date.today << 3).year
 	wday = nowtime.wday
-
 	# 春秋判別
 	if nowtime.month >= 4 and nowtime.month < 10 then
 		term = "Spring"
@@ -310,8 +324,8 @@ def getStudentInfo(uuid)
 	return studentInfo
 end
 
-#出席ポイント取得リクエスト
-def getAttendPoint(uuid)
+#受講講義情報取得
+def getLectureList(uuid)
     # データベースに接続
     client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
     count = 0
@@ -366,7 +380,7 @@ def getAttendPoint(uuid)
     return alllectureInfo
 end
 
-    #講義履歴取得リクエスト
+    #講義の詳細履歴取得処理
 def getLectureHistory(uuid,lectureID)
 # データベースに接続
     client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
@@ -392,7 +406,7 @@ def getLectureHistory(uuid,lectureID)
         starttime = String.new
         lectureHistory = []#該当講義の全履歴を格納する配列
         
-        #lectureIDから該当講義の講義美を取得
+        #lectureIDから該当講義の講義日を取得
         result_date = client.query("SELECT DISTINCT date FROM attendance_data WHERE lecture_id = '#{lectureID}'")
         if result_date.size != 0 then
             result_date.each do |row_date|
@@ -527,13 +541,22 @@ loop do
             # 学生情報登録確認
             when 0 then
                 console.outputInfoOnConsole(uuid,"registered check request from #{socket.peeraddr[3]}")
+                
+                os = resultJSON['request']['os']
+                appVersion = resultJSON['request']['appVersion']
+                buildVersion = resultJSON['request']['buildVersion']
+                
                 # 学生情報登録確認処理
-                result = checkRegistered(uuid)
-		
+                result = checkRegistered(uuid,os,appVersion,buildVersion)
+                
+                puts "result:#{result}"
+                
                 # レスポンス作成
                 header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
                 if result == 0 then	# 登録済み
                     json =  "{\"response\":null,\"header\":{\"status\":\"already registered\",\"responseCode\":0}}"
+                elsif result == 2 then#アプリケーションが最新ではない
+                    json =  "{\"response\":null,\"header\":{\"status\":\"appVersion old\",\"responseCode\":2}}"
                 else	# 未登録
                     json =  "{\"response\":null,\"header\":{\"status\":\"unregistered\",\"responseCode\":1}}"
                 end
@@ -553,8 +576,8 @@ loop do
                 header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
                 if result.kind_of?(Exception) then # データベース検索でエラーが発生してたら
                     json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":1}}"
-                elsif result == 0 then # 正常に動作した場合
-                    json =  "{\"response\":null,\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                elsif result.kind_of?(Hash) then # 正常に動作した場合
+                    json =  "{\"response\":{\"lectureDate\":\"#{result['lectureDate']}\",\"attendDate\":\"#{result['attendDate']}\"},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
                 else #予期しない動作をしていた場合
                     json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
                 end
@@ -587,6 +610,7 @@ loop do
 	        # 学生情報登録処理
             when 3 then
                 console.outputInfoOnConsole(uuid,"registration request from #{socket.peeraddr[3]}")
+                console.outputInfoOnConsole(resultJSON,"")
                 # 学生情報登録処理
                 studentID = resultJSON['request']['studentID']
                 name = resultJSON['request']['name']
@@ -655,7 +679,7 @@ loop do
                 # レスポンス送信
                 socket.puts response
         
-            # 講義履歴取得要求処理
+            # 講義の詳細履歴取得処理
             when 6 then
                 console.outputInfoOnConsole(uuid,"get lecture history request from #{socket.peeraddr[3]}")
         
@@ -746,7 +770,7 @@ loop do
             when 10 then
                 console.outputInfoOnConsole(uuid,"get attendPoint request from #{socket.peeraddr[3]}")
                 # 受講講義情報取得処理
-                result = getAttendPoint(uuid)
+                result = getLectureList(uuid)
         
                 # レスポンス作成
                 header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
