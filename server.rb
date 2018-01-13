@@ -458,6 +458,37 @@ def getClassroom(uuid,major)
     roomInfo = {"room" => room}
     return roomInfo
 end
+
+#uuid変更リクエスト
+def changeuuid(uuid,studentID,name)
+    # データベースに接続
+    client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
+    date = Date.new
+    
+    # DB
+    begin
+        # ビーコンMajorから教室名を取得
+        room = String.new
+        results = client.query("SELECT registerDate FROM student WHERE student_id='#{studentID}' AND name='#{name}'")
+        if results.size == 1 then
+            results.each do |row|
+                date = row['registerDate']
+            end
+        else
+            return 2
+        end
+        today = Date.today
+    
+        if today - date >30 then
+            client.query("UPDATE student SET uuid='#{uuid}',registerDate='#{today}' WHERE student_id='#{studentID}' AND name='#{name}'")
+        else
+            return 1
+        end
+    rescue => e
+        return e
+    end
+    return 0
+end
     
 #attendTime取得リクエスト
 def getAttendTime(uuid)
@@ -532,7 +563,6 @@ loop do
         end
         
         resultJSON = JSON.parse(str)
-        #puts resultJSON
       
         uuid = resultJSON['header']['uuid']
         requestCode = resultJSON['request']['requestCode'].to_i
@@ -610,7 +640,6 @@ loop do
 	        # 学生情報登録処理
             when 3 then
                 console.outputInfoOnConsole(uuid,"registration request from #{socket.peeraddr[3]}")
-                console.outputInfoOnConsole(resultJSON,"")
                 # 学生情報登録処理
                 studentID = resultJSON['request']['studentID']
                 name = resultJSON['request']['name']
@@ -785,7 +814,31 @@ loop do
                 puts "    "+json
                 # レスポンス送信
                 socket.puts response
-        end
+                
+            #uuid変更要求処理
+            when 11 then
+                console.outputInfoOnConsole(uuid,"get attendPoint request from #{socket.peeraddr[3]}")
+                studentID = resultJSON['request']['studentID']
+                name = resultJSON['request']['name']
+                # 受講講義情報取得処理
+                result = changeuuid(uuid,studentID,name)
+            
+                # レスポンス作成
+                header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
+                if result.kind_of?(Exception) then #データベース検索でエラーが発生した場合
+                    json =  "{\"response\":#{result.message},\"header\":{\"status\":\"DBError\",\"responseCode\":3}}"
+                elsif result == 0 then #正常にuuidを変更できた場合
+                    json =  "{\"response\":#{result.to_json},\"header\":{\"status\":\"success\",\"responseCode\":0}}"
+                elsif result == 1 then #過去30日以内に変更していた場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":1}}"
+                else #データベース検索以外でエラーが発生した場合
+                    json =  "{\"response\":null,\"header\":{\"status\":\"error\",\"responseCode\":#{result}}}"
+                end
+                response = header + "Content-Length: #{json.bytesize}" + "\r\n\r\n" + json
+                puts "    "+json
+                # レスポンス送信
+                socket.puts response
+            end
         socket.close
     end
 end
