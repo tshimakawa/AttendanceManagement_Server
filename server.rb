@@ -159,7 +159,7 @@ end
 
 
 # 学生登録処理
-def registerStudent(uuid,studentID,name)
+def registerStudent(uuid,studentID,name,fcmtoken)
 	# データベースに接続
 	client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
 	# DB
@@ -173,7 +173,7 @@ def registerStudent(uuid,studentID,name)
             studentInfo = {"studentName" => studentName}
             return studentInfo
         elsif results.size == 0 then #入力された学籍番号が登録されていない場合
-            client.query("INSERT INTO student(student_id,name,uuid) VALUES ('#{studentID}','#{name}','#{uuid}')")
+        client.query("INSERT INTO student(student_id,name,uuid,FCMtoken) VALUES ('#{studentID}','#{name}','#{uuid}','#{fcmtoken}')")
             return 0
         else
             return 1
@@ -460,14 +460,13 @@ def getClassroom(uuid,major)
 end
 
 #uuid変更リクエスト
-def changeuuid(uuid,studentID,name)
+def changeuuid(uuid,studentID,name,fcmtoken)
     # データベースに接続
     client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
     date = Date.new
     
     # DB
     begin
-        # ビーコンMajorから教室名を取得
         room = String.new
         results = client.query("SELECT registerDate FROM student WHERE student_id='#{studentID}' AND name='#{name}'")
         if results.size == 1 then
@@ -480,7 +479,7 @@ def changeuuid(uuid,studentID,name)
         today = Date.today
     
         if today - date >30 then
-            client.query("UPDATE student SET uuid='#{uuid}',registerDate='#{today}' WHERE student_id='#{studentID}' AND name='#{name}'")
+            client.query("UPDATE student SET uuid='#{uuid}',registerDate='#{today}',FCMtoken='#{fcmtoken}' WHERE student_id='#{studentID}' AND name='#{name}'")
         else
             return 1
         end
@@ -643,7 +642,8 @@ loop do
                 # 学生情報登録処理
                 studentID = resultJSON['request']['studentID']
                 name = resultJSON['request']['name']
-                result = registerStudent(uuid,studentID,name)
+                fcmtoken = resultJSON['request']['FCMtoken']
+                result = registerStudent(uuid,studentID,name,fcmtoken)
                 
                 # レスポンス作成
                 header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
@@ -820,8 +820,9 @@ loop do
                 console.outputInfoOnConsole(uuid,"get attendPoint request from #{socket.peeraddr[3]}")
                 studentID = resultJSON['request']['studentID']
                 name = resultJSON['request']['name']
+                fcmtoken = resultJSON['request']['FCMtoken']
                 # 受講講義情報取得処理
-                result = changeuuid(uuid,studentID,name)
+                result = changeuuid(uuid,studentID,name,fcmtoken)
             
                 # レスポンス作成
                 header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccept: application/json"
