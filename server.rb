@@ -329,11 +329,13 @@ def getLectureList(uuid)
     # データベースに接続
     client = Mysql2::Client.new(:host => "localhost", :username => "attend_admin", :password => "light12345", :database => "attendance_platform_db")
     count = 0
-    lectureID = []#学生が受講している全講義のlecture_idを格納する
-    lectureName = []#学生が受講している全講義の講義名を格納する
-    profName = []#学生が受講している全講義の担当教員の名前を格納する
+#    lectureID = []#学生が受講している全講義のlecture_idを格納する
+#    lectureName = []#学生が受講している全講義の講義名を格納する
+#    profName = []#学生が受講している全講義の担当教員の名前を格納する
+#    timeID = []#学生が受講している全講義の時限数を格納する
+#    weekDay = []#学生が受講している全講義の曜日を格納する
     alllectureInfo = []#lectureInfoの全情報を格納する
-    
+
     begin
         # UUIDからstudentIDを取得
         studentID = String.new
@@ -351,18 +353,20 @@ def getLectureList(uuid)
         if result_lectureID.size != 0 then
             result_lectureID.each do |row_lectureID|
                 lectureInfo = {}#各講義の情報を格納する{lecture_id,講義名,担当教員}
-                result_sucject = client.query("SELECT subject,prof_id FROM lecture WHERE lecture_id='#{row_lectureID['lecture_id']}'")
+                result_sucject = client.query("SELECT subject,prof_id,time_id,weekday FROM lecture WHERE lecture_id='#{row_lectureID['lecture_id']}'")
                 if result_sucject.size == 1 then
                     result_sucject.each do |row_subject|
                         result_profName = client.query("SELECT name FROM prof WHERE prof_id='#{row_subject['prof_id']}'")
                         if result_profName.size == 1 then
                             result_profName.each do |row_profName|
-                                lectureInfo["profName"] = row_profName['name']
+                                lectureInfo['profName'] = row_profName['name']
                             end
                         else
                             return 3
                         end
                         lectureInfo['subject'] = row_subject['subject']
+                        lectureInfo['timeID'] = row_subject['time_id']
+                        lectureInfo['weekDay'] = row_subject['weekday']
                     end
                 else
                     return 4
